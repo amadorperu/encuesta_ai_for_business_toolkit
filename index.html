@@ -453,12 +453,13 @@
   "use strict";
 
   /* ==========================================================
-     CONFIGURACIÓN: URL pública de Google Apps Script (/exec)
+     CONFIGURACIÓN
      ========================================================== */
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzeEMQyWCCqyjbjj2xf4RXTkxvMMAEpm1UaillD99pNBkDyWAv2SOw87qUP5BUC6p95/exec";
+  const SCRIPT_URL =
+    "https://script.google.com/macros/s/AKfycbzeEMQyWCCqyjbjj2xf4RXTkxvMMAEpm1UaillD99pNBkDyWAv2SOw87qUP5BUC6p95/exec";
 
   /* ==========================================================
-     ELEMENTOS PRINCIPALES
+     ELEMENTOS
      ========================================================== */
   const form = document.getElementById("form");
   const fill = document.getElementById("pfill");
@@ -470,7 +471,7 @@
 
   let isSubmitting = false;
 
-  // Limpia parámetros antiguos que pudieron quedar en la URL por pruebas previas.
+  // Elimina parámetros antiguos de pruebas previas sin recargar la página.
   if (window.location.search) {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
@@ -481,15 +482,15 @@
   document.querySelectorAll("[data-other]").forEach((chip) => {
     const key = chip.getAttribute("data-other");
     const checkbox = chip.querySelector("input");
-    const input = document.querySelector(`[data-other-in="${key}"]`);
+    const otherInput = document.querySelector(`[data-other-in="${key}"]`);
 
     checkbox.addEventListener("change", () => {
-      input.classList.toggle("show", checkbox.checked);
+      otherInput.classList.toggle("show", checkbox.checked);
 
       if (checkbox.checked) {
-        input.focus();
+        otherInput.focus();
       } else {
-        input.value = "";
+        otherInput.value = "";
       }
 
       updateProgress();
@@ -505,7 +506,7 @@
     let count = 0;
 
     ["area", "rol", "frecuencia", "politicas", "enfasis"].forEach((name) => {
-      if (form.elements[name] && form.elements[name].value) count += 1;
+      if (form.elements[name]?.value) count += 1;
     });
 
     ["familiaridad", "pago", "confianza_prompts"].forEach((name) => {
@@ -513,15 +514,17 @@
     });
 
     ["herramientas", "usos", "barreras"].forEach((key) => {
-      const selected = document.querySelectorAll(
-        `[data-multi="${key}"] input:checked`
-      );
-      if (selected.length > 0) count += 1;
+      if (
+        document.querySelectorAll(`[data-multi="${key}"] input:checked`).length >
+        0
+      ) {
+        count += 1;
+      }
     });
 
     ["tarea", "objetivo"].forEach((id) => {
       const element = document.getElementById(id);
-      if (element && element.value.trim()) count += 1;
+      if (element?.value.trim()) count += 1;
     });
 
     return count;
@@ -542,7 +545,7 @@
   form.addEventListener("change", updateProgress);
 
   /* ==========================================================
-     RECOLECCIÓN DE RESPUESTAS MÚLTIPLES
+     RECOLECCIÓN DE DATOS
      ========================================================== */
   function collectMulti(key) {
     const values = [];
@@ -555,6 +558,7 @@
             `[data-other-in="${key}"]`
           );
           const otherValue = otherInput.value.trim();
+
           if (otherValue) values.push(otherValue);
         } else {
           values.push(input.value);
@@ -586,29 +590,32 @@
   }
 
   /* ==========================================================
-     ENVÍO POST A APPS SCRIPT MEDIANTE IFRAME OCULTO
-     Evita CORS y no recarga ni limpia la encuesta.
+     ENVÍO POST Y CONFIRMACIÓN REAL DEL APPS SCRIPT
      ========================================================== */
   function submitToGoogleSheet(payload) {
     return new Promise((resolve, reject) => {
-      const uniqueId = `sheet_${Date.now()}_${Math.random()
-        .toString(36)
-        .slice(2)}`;
+      const requestId =
+        "survey_" +
+        Date.now() +
+        "_" +
+        Math.random().toString(36).slice(2, 10);
+
+      const frameName = "receiver_" + requestId;
 
       const iframe = document.createElement("iframe");
-      iframe.name = uniqueId;
-      iframe.id = uniqueId;
-      iframe.title = "Envío de respuestas";
+      iframe.name = frameName;
+      iframe.id = frameName;
+      iframe.title = "Confirmación de registro";
       iframe.style.display = "none";
 
       const hiddenForm = document.createElement("form");
       hiddenForm.method = "POST";
       hiddenForm.action = SCRIPT_URL;
-      hiddenForm.target = uniqueId;
+      hiddenForm.target = frameName;
       hiddenForm.style.display = "none";
       hiddenForm.acceptCharset = "UTF-8";
 
-      function addHiddenField(name, value) {
+      function addField(name, value) {
         const field = document.createElement("input");
         field.type = "hidden";
         field.name = name;
@@ -618,48 +625,81 @@
         hiddenForm.appendChild(field);
       }
 
-      addHiddenField("action", "submit");
+      addField("action", "submit");
+      addField("request_id", requestId);
+
       Object.entries(payload).forEach(([key, value]) => {
-        addHiddenField(key, value);
+        addField(key, value);
       });
 
-      let initialFrameLoaded = false;
-      let finished = false;
+      let settled = false;
 
       const cleanup = () => {
+        window.removeEventListener("message", handleMessage);
         hiddenForm.remove();
         iframe.remove();
       };
 
-      const timeoutId = window.setTimeout(() => {
-        if (finished) return;
-        finished = true;
+      const finishWithError = (message) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
         cleanup();
-        reject(new Error("Tiempo de espera agotado al registrar la respuesta."));
-      }, 20000);
+        reject(new Error(message));
+      };
 
-      iframe.addEventListener("load", () => {
-        if (!initialFrameLoaded) {
-          initialFrameLoaded = true;
-          hiddenForm.submit();
+      const finishWithSuccess = (data) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
+        cleanup();
+        resolve(data);
+      };
+
+      function handleMessage(event) {
+        const originIsGoogle =
+          event.origin === "https://script.google.com" ||
+          event.origin === "https://script.googleusercontent.com" ||
+          event.origin.endsWith(".googleusercontent.com");
+
+        if (!originIsGoogle) return;
+
+        const data = event.data;
+
+        if (
+          !data ||
+          data.type !== "survey-submit-result" ||
+          data.requestId !== requestId
+        ) {
           return;
         }
 
-        if (finished) return;
-        finished = true;
-        window.clearTimeout(timeoutId);
-        cleanup();
-        resolve();
-      });
+        if (data.ok) {
+          finishWithSuccess(data);
+        } else {
+          finishWithError(data.message || "Google no pudo guardar la respuesta.");
+        }
+      }
 
-      document.body.appendChild(hiddenForm);
-      iframe.srcdoc = "<!doctype html><html><body></body></html>";
+      window.addEventListener("message", handleMessage);
+
+      const timeoutId = window.setTimeout(() => {
+        finishWithError(
+          "No llegó la confirmación de Google. Revisa que la aplicación web esté publicada para Cualquier persona."
+        );
+      }, 30000);
+
+      // El iframe debe existir antes de enviar el formulario.
       document.body.appendChild(iframe);
+      document.body.appendChild(hiddenForm);
+
+      // Envío directo: no depende del evento load inicial del iframe.
+      hiddenForm.submit();
     });
   }
 
   /* ==========================================================
-     INTERFAZ DE ÉXITO Y ERROR
+     INTERFAZ
      ========================================================== */
   function showSuccess() {
     form.style.display = "none";
@@ -691,6 +731,7 @@
       errBox.style.display = "block";
 
       const firstInvalid = form.querySelector(":invalid");
+
       if (firstInvalid) {
         firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
         window.setTimeout(() => firstInvalid.focus(), 350);
@@ -706,13 +747,14 @@
     submitBtn.textContent = "Registrando respuestas…";
 
     try {
-      const payload = buildPayload();
-      await submitToGoogleSheet(payload);
+      const result = await submitToGoogleSheet(buildPayload());
+      console.info("Respuesta registrada:", result);
       showSuccess();
     } catch (error) {
       console.error("Error al registrar la encuesta:", error);
       showError(
-        "No se pudo registrar la respuesta. Revisa tu conexión y vuelve a intentarlo; tus respuestas permanecen en el formulario."
+        error?.message ||
+          "No se pudo registrar la respuesta. Tus datos permanecen en el formulario."
       );
     }
   });
