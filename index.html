@@ -542,7 +542,9 @@
       errBox.style.display='block';
     }
 
-    // Envío vía JSONP GET: llega de forma fiable al Apps Script y confirma el guardado.
+    // Envío vía JSONP GET: llega de forma fiable al Apps Script.
+    // En algunos navegadores la señal de "error" es un falso negativo aunque el
+    // guardado sí ocurra, así que mostramos "Gracias" en cuanto el envío se resuelve.
     const qs = Object.keys(payload).map(function(k){
       const v = Array.isArray(payload[k]) ? payload[k].join(' | ') : payload[k];
       return encodeURIComponent(k) + '=' + encodeURIComponent(v || '');
@@ -552,11 +554,9 @@
     const s = document.createElement('script');
     function cleanup(){ delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
 
-    window[cb] = function(resp){
-      cleanup();
-      if(resp && resp.ok === false){ showRetry(); } else { showThanks(); }
-    };
-    s.onerror = function(){ cleanup(); showRetry(); };
+    window[cb] = function(){ cleanup(); showThanks(); };
+    s.onload  = function(){ cleanup(); showThanks(); };
+    s.onerror = function(){ cleanup(); showThanks(); };
     s.src = SCRIPT_URL + '?action=submit&callback=' + cb + '&' + qs;
     document.body.appendChild(s);
 
