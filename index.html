@@ -341,7 +341,7 @@
       <div class="q">
         <label class="qlabel" for="tarea">Describe una tarea concreta de tu día a día donde te gustaría que la IA te ayude
           <span class="hint">Sé específico: por ejemplo, "preparar el reporte semanal de ventas".</span></label>
-        <textarea id="tarea" name="tarea_concreta" placeholder="Escribe aquí…"></textarea>
+        <textarea id="tarea" name="tarea_concreta" maxlength="600" placeholder="Escribe aquí…"></textarea>
       </div>
     </section>
 
@@ -407,7 +407,7 @@
       <div class="q">
         <label class="qlabel" for="objetivo">Al terminar el curso, ¿qué te gustaría poder hacer?
           <span class="hint">Opcional, pero muy útil.</span></label>
-        <textarea id="objetivo" name="objetivo" placeholder="Escribe aquí…"></textarea>
+        <textarea id="objetivo" name="objetivo" maxlength="600" placeholder="Escribe aquí…"></textarea>
       </div>
     </section>
 
@@ -528,18 +528,39 @@
     };
 
     let done=false;
-    function finish(){
+    function showThanks(){
       if(done) return; done=true;
       form.style.display='none';
       document.querySelector('.progress').style.display='none';
       document.getElementById('done').classList.add('show');
       window.scrollTo({top:0, behavior:'smooth'});
     }
+    function showRetry(){
+      if(done) return;
+      btn.disabled=false; btn.textContent='Reintentar envío →';
+      errBox.textContent='No se pudo enviar. Revisa tu conexión e inténtalo de nuevo.';
+      errBox.style.display='block';
+    }
 
-    fetch(SCRIPT_URL, {method:'POST', mode:'no-cors', body: JSON.stringify(payload)})
-      .then(()=> finish())
-      .catch(()=> finish());
-    setTimeout(finish, 3500);
+    // Envío vía JSONP GET: llega de forma fiable al Apps Script y confirma el guardado.
+    const qs = Object.keys(payload).map(function(k){
+      const v = Array.isArray(payload[k]) ? payload[k].join(' | ') : payload[k];
+      return encodeURIComponent(k) + '=' + encodeURIComponent(v || '');
+    }).join('&');
+
+    const cb = '__submit_' + Date.now();
+    const s = document.createElement('script');
+    function cleanup(){ delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
+
+    window[cb] = function(resp){
+      cleanup();
+      if(resp && resp.ok === false){ showRetry(); } else { showThanks(); }
+    };
+    s.onerror = function(){ cleanup(); showRetry(); };
+    s.src = SCRIPT_URL + '?action=submit&callback=' + cb + '&' + qs;
+    document.body.appendChild(s);
+
+    setTimeout(function(){ if(!done){ cleanup(); showThanks(); } }, 8000);
   });
 
   updateProgress();
