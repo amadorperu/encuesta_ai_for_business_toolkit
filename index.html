@@ -535,32 +535,33 @@
       document.getElementById('done').classList.add('show');
       window.scrollTo({top:0, behavior:'smooth'});
     }
-    function showRetry(){
-      if(done) return;
-      btn.disabled=false; btn.textContent='Reintentar envío →';
-      errBox.textContent='No se pudo enviar. Revisa tu conexión e inténtalo de nuevo.';
-      errBox.style.display='block';
+
+    // Envío mediante un formulario GET oculto que carga en un iframe invisible.
+    // Es una navegación real (idéntica a abrir la URL en el navegador), por lo que
+    // llega al Apps Script incluso en navegadores que bloquean fetch/script cross-origin.
+    let sink = document.getElementById('__sink');
+    if(!sink){
+      sink = document.createElement('iframe');
+      sink.name = '__sink'; sink.id = '__sink'; sink.style.display = 'none';
+      document.body.appendChild(sink);
     }
+    const f = document.createElement('form');
+    f.method = 'GET'; f.action = SCRIPT_URL; f.target = '__sink'; f.style.display = 'none';
+    function addField(name, value){
+      const i = document.createElement('input');
+      i.type = 'hidden'; i.name = name; i.value = value;
+      f.appendChild(i);
+    }
+    addField('action', 'submit');
+    Object.keys(payload).forEach(function(k){
+      const v = Array.isArray(payload[k]) ? payload[k].join(' | ') : (payload[k] || '');
+      addField(k, v);
+    });
+    document.body.appendChild(f);
 
-    // Envío vía JSONP GET: llega de forma fiable al Apps Script.
-    // En algunos navegadores la señal de "error" es un falso negativo aunque el
-    // guardado sí ocurra, así que mostramos "Gracias" en cuanto el envío se resuelve.
-    const qs = Object.keys(payload).map(function(k){
-      const v = Array.isArray(payload[k]) ? payload[k].join(' | ') : payload[k];
-      return encodeURIComponent(k) + '=' + encodeURIComponent(v || '');
-    }).join('&');
-
-    const cb = '__submit_' + Date.now();
-    const s = document.createElement('script');
-    function cleanup(){ delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
-
-    window[cb] = function(){ cleanup(); showThanks(); };
-    s.onload  = function(){ cleanup(); showThanks(); };
-    s.onerror = function(){ cleanup(); showThanks(); };
-    s.src = SCRIPT_URL + '?action=submit&callback=' + cb + '&' + qs;
-    document.body.appendChild(s);
-
-    setTimeout(function(){ if(!done){ cleanup(); showThanks(); } }, 8000);
+    sink.onload = function(){ showThanks(); };
+    f.submit();
+    setTimeout(showThanks, 5000);
   });
 
   updateProgress();
