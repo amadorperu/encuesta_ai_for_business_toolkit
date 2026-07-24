@@ -656,47 +656,40 @@
         resolve(data);
       };
 
-      function handleMessage(event) {
-        const originIsGoogle =
-          event.origin === "https://script.google.com" ||
-          event.origin === "https://script.googleusercontent.com" ||
-          event.origin.endsWith(".googleusercontent.com");
+function handleMessage(event) {
+  const data = event.data;
 
-        if (!originIsGoogle) return;
-
-        const data = event.data;
-
-        if (
-          !data ||
-          data.type !== "survey-submit-result" ||
-          data.requestId !== requestId
-        ) {
-          return;
-        }
-
-        if (data.ok) {
-          finishWithSuccess(data);
-        } else {
-          finishWithError(data.message || "Google no pudo guardar la respuesta.");
-        }
-      }
-
-      window.addEventListener("message", handleMessage);
-
-      const timeoutId = window.setTimeout(() => {
-        finishWithError(
-          "No llegó la confirmación de Google. Revisa que la aplicación web esté publicada para Cualquier persona."
-        );
-      }, 30000);
-
-      // El iframe debe existir antes de enviar el formulario.
-      document.body.appendChild(iframe);
-      document.body.appendChild(hiddenForm);
-
-      // Envío directo: no depende del evento load inicial del iframe.
-      hiddenForm.submit();
-    });
+  /*
+   * La confirmación debe ser un objeto.
+   */
+  if (!data || typeof data !== "object") {
+    return;
   }
+
+  /*
+   * Solo acepta el tipo exacto de mensaje generado
+   * por nuestro Apps Script.
+   */
+  if (data.type !== "survey-submit-result") {
+    return;
+  }
+
+  /*
+   * El requestId es único para este envío.
+   * Evita aceptar confirmaciones de otras solicitudes.
+   */
+  if (data.requestId !== requestId) {
+    return;
+  }
+
+  if (data.ok === true) {
+    finishWithSuccess(data);
+  } else {
+    finishWithError(
+      data.message || "Google no pudo guardar la respuesta."
+    );
+  }
+}
 
   /* ==========================================================
      INTERFAZ
