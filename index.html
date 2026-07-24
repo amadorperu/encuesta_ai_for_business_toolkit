@@ -424,8 +424,8 @@
 
   <div class="done" id="done">
     <div class="mark"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
-    <h2>¡Gracias, quedó registrado!</h2>
-    <p>Con tu aporte armamos un curso más útil para todo el grupo. Nos vemos en la primera sesión del <b>AI for Business Toolkit</b>. Ya puedes cerrar esta página.</p>
+    <h2>¡Gracias! Encuesta enviada</h2>
+    <p>Tus respuestas fueron enviadas correctamente. Con tu aporte armamos un curso más útil para todo el grupo. Ya puedes cerrar esta página.</p>
   </div>
 
   <footer class="credit">
@@ -450,305 +450,233 @@
 </div>
 
 <script>
-  "use strict";
+"use strict";
 
-  /* ==========================================================
-     CONFIGURACIÓN
-     ========================================================== */
-  const SCRIPT_URL =
-    "https://script.google.com/macros/s/AKfycbzeEMQyWCCqyjbjj2xf4RXTkxvMMAEpm1UaillD99pNBkDyWAv2SOw87qUP5BUC6p95/exec";
+const SCRIPT_URL =
+  "https://script.google.com/macros/s/AKfycbzeEMQyWCCqyjbjj2xf4RXTkxvMMAEpm1UaillD99pNBkDyWAv2SOw87qUP5BUC6p95/exec";
 
-  /* ==========================================================
-     ELEMENTOS PRINCIPALES
-     ========================================================== */
-  const form = document.getElementById("form");
-  const fill = document.getElementById("pfill");
-  const pctTxt = document.getElementById("pctTxt");
-  const submitBtn = document.getElementById("submitBtn");
-  const errBox = document.getElementById("errBox");
-  const progressBar = document.querySelector(".progress");
-  const doneBox = document.getElementById("done");
+const form = document.getElementById("form");
+const fill = document.getElementById("pfill");
+const pctTxt = document.getElementById("pctTxt");
+const submitBtn = document.getElementById("submitBtn");
+const errBox = document.getElementById("errBox");
+const progressBar = document.querySelector(".progress");
+const doneBox = document.getElementById("done");
 
-  let isSubmitting = false;
+let isSubmitting = false;
 
-  // Retira parámetros que hayan quedado en la URL por pruebas anteriores.
-  if (window.location.search) {
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }
+if (window.location.search) {
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
 
-  /* ==========================================================
-     CAMPOS "OTRA..."
-     ========================================================== */
-  document.querySelectorAll("[data-other]").forEach((chip) => {
-    const key = chip.getAttribute("data-other");
-    const checkbox = chip.querySelector("input");
-    const otherInput = document.querySelector(`[data-other-in="${key}"]`);
+function selectedRadio(name) {
+  const selected = form.querySelector('[name="' + name + '"]:checked');
+  return selected ? selected.value : "";
+}
 
-    checkbox.addEventListener("change", () => {
-      otherInput.classList.toggle("show", checkbox.checked);
+function collectMulti(key) {
+  const values = [];
+  const selected = document.querySelectorAll(
+    '[data-multi="' + key + '"] input:checked'
+  );
 
-      if (checkbox.checked) {
-        otherInput.focus();
-      } else {
-        otherInput.value = "";
-      }
-
-      updateProgress();
-    });
+  selected.forEach(function (input) {
+    if (input.value === "__other__") {
+      const other = document.querySelector('[data-other-in="' + key + '"]');
+      const value = other ? other.value.trim() : "";
+      if (value) values.push(value);
+    } else {
+      values.push(input.value);
+    }
   });
 
-  /* ==========================================================
-     BARRA DE PROGRESO
-     ========================================================== */
+  return values;
+}
+
+function answeredQuestions() {
+  let count = 0;
+
+  ["area", "rol", "frecuencia", "politicas", "enfasis"].forEach(
+    function (name) {
+      const field = form.elements[name];
+      if (field && field.value) count += 1;
+    }
+  );
+
+  ["familiaridad", "pago", "confianza_prompts"].forEach(function (name) {
+    if (selectedRadio(name)) count += 1;
+  });
+
+  ["herramientas", "usos", "barreras"].forEach(function (key) {
+    if (collectMulti(key).length > 0) count += 1;
+  });
+
+  ["tarea", "objetivo"].forEach(function (id) {
+    const field = document.getElementById(id);
+    if (field && field.value.trim()) count += 1;
+  });
+
+  return count;
+}
+
+function updateProgress() {
   const totalQuestions = 14;
+  const percentage = Math.min(
+    100,
+    Math.round((answeredQuestions() / totalQuestions) * 100)
+  );
 
-  function answeredQuestions() {
-    let count = 0;
+  fill.style.width = percentage + "%";
+  pctTxt.textContent = percentage + "%";
+  progressBar.setAttribute("aria-valuenow", String(percentage));
+}
 
-    ["area", "rol", "frecuencia", "politicas", "enfasis"].forEach((name) => {
-      if (form.elements[name] && form.elements[name].value) count += 1;
-    });
+function refreshProgressAfterRestore() {
+  updateProgress();
+  window.setTimeout(updateProgress, 100);
+  window.setTimeout(updateProgress, 500);
+  window.setTimeout(updateProgress, 1200);
+}
 
-    ["familiaridad", "pago", "confianza_prompts"].forEach((name) => {
-      if (form.querySelector(`[name="${name}"]:checked`)) count += 1;
-    });
+document.querySelectorAll("[data-other]").forEach(function (chip) {
+  const key = chip.getAttribute("data-other");
+  const checkbox = chip.querySelector("input");
+  const otherInput = document.querySelector('[data-other-in="' + key + '"]');
 
-    ["herramientas", "usos", "barreras"].forEach((key) => {
-      const selected = document.querySelectorAll(
-        `[data-multi="${key}"] input:checked`
-      );
-      if (selected.length > 0) count += 1;
-    });
+  if (!checkbox || !otherInput) return;
 
-    ["tarea", "objetivo"].forEach((id) => {
-      const element = document.getElementById(id);
-      if (element && element.value.trim()) count += 1;
-    });
+  checkbox.addEventListener("change", function () {
+    otherInput.classList.toggle("show", checkbox.checked);
 
-    return count;
-  }
-
-  function updateProgress() {
-    const percentage = Math.min(
-      100,
-      Math.round((answeredQuestions() / totalQuestions) * 100)
-    );
-
-    fill.style.width = `${percentage}%`;
-    pctTxt.textContent = `${percentage}%`;
-    progressBar.setAttribute("aria-valuenow", String(percentage));
-  }
-
-  form.addEventListener("input", updateProgress);
-  form.addEventListener("change", updateProgress);
-
-  /* ==========================================================
-     RECOLECCIÓN DE RESPUESTAS MÚLTIPLES
-     ========================================================== */
-  function collectMulti(key) {
-    const values = [];
-
-    document
-      .querySelectorAll(`[data-multi="${key}"] input:checked`)
-      .forEach((input) => {
-        if (input.value === "__other__") {
-          const otherInput = document.querySelector(
-            `[data-other-in="${key}"]`
-          );
-          const otherValue = otherInput.value.trim();
-          if (otherValue) values.push(otherValue);
-        } else {
-          values.push(input.value);
-        }
-      });
-
-    return values;
-  }
-
-  function buildPayload() {
-    return {
-      nombre: form.elements.nombre.value.trim(),
-      area: form.elements.area.value,
-      rol: form.elements.rol.value,
-      familiaridad:
-        (form.querySelector('[name="familiaridad"]:checked') || {}).value || "",
-      herramientas: collectMulti("herramientas"),
-      frecuencia: form.elements.frecuencia.value,
-      pago: (form.querySelector('[name="pago"]:checked') || {}).value || "",
-      usos: collectMulti("usos"),
-      tarea_concreta: form.elements.tarea_concreta.value.trim(),
-      politicas: form.elements.politicas.value,
-      barreras: collectMulti("barreras"),
-      confianza_prompts:
-        (form.querySelector('[name="confianza_prompts"]:checked') || {}).value || "",
-      enfasis: form.elements.enfasis.value,
-      objetivo: form.elements.objetivo.value.trim()
-    };
-  }
-
-  /* ==========================================================
-     ENVÍO POST MEDIANTE FORMULARIO E IFRAME OCULTOS
-
-     El primer evento "load" corresponde al iframe vacío.
-     En ese momento se envía el formulario.
-     El segundo evento "load" corresponde a la respuesta de
-     Apps Script y activa la confirmación visual.
-     ========================================================== */
-  function submitToGoogleSheet(payload) {
-    return new Promise((resolve, reject) => {
-      const requestId =
-        "survey_" +
-        Date.now() +
-        "_" +
-        Math.random().toString(36).slice(2, 10);
-
-      const frameName = "receiver_" + requestId;
-      const iframe = document.createElement("iframe");
-      const hiddenForm = document.createElement("form");
-
-      iframe.name = frameName;
-      iframe.id = frameName;
-      iframe.title = "Recepción de Google Apps Script";
-      iframe.style.display = "none";
-
-      hiddenForm.method = "POST";
-      hiddenForm.action = SCRIPT_URL;
-      hiddenForm.target = frameName;
-      hiddenForm.style.display = "none";
-      hiddenForm.acceptCharset = "UTF-8";
-
-      function addField(name, value) {
-        const field = document.createElement("input");
-        field.type = "hidden";
-        field.name = name;
-        field.value = Array.isArray(value)
-          ? value.join(" | ")
-          : String(value == null ? "" : value);
-        hiddenForm.appendChild(field);
-      }
-
-      addField("action", "submit");
-      addField("request_id", requestId);
-
-      Object.keys(payload).forEach((key) => {
-        addField(key, payload[key]);
-      });
-
-      let phase = "initial";
-      let finished = false;
-
-      const cleanup = () => {
-        hiddenForm.remove();
-        iframe.remove();
-      };
-
-      const timeoutId = window.setTimeout(() => {
-        if (finished) return;
-        finished = true;
-        cleanup();
-        reject(
-          new Error(
-            "Google no respondió dentro del tiempo esperado. Tus respuestas permanecen en el formulario."
-          )
-        );
-      }, 30000);
-
-      iframe.addEventListener("load", () => {
-        if (finished) return;
-
-        if (phase === "initial") {
-          phase = "submitted";
-
-          try {
-            hiddenForm.submit();
-          } catch (error) {
-            finished = true;
-            window.clearTimeout(timeoutId);
-            cleanup();
-            reject(error);
-          }
-
-          return;
-        }
-
-        if (phase === "submitted") {
-          finished = true;
-          window.clearTimeout(timeoutId);
-          cleanup();
-          resolve({ requestId });
-        }
-      });
-
-      document.body.appendChild(hiddenForm);
-
-      // srcdoc provoca una primera carga controlada y predecible.
-      iframe.srcdoc = "<!doctype html><html><body></body></html>";
-      document.body.appendChild(iframe);
-    });
-  }
-
-  /* ==========================================================
-     INTERFAZ DE ÉXITO Y ERROR
-     ========================================================== */
-  function showSuccess() {
-    form.style.display = "none";
-    progressBar.style.display = "none";
-    doneBox.classList.add("show");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function showError(message) {
-    errBox.textContent = message;
-    errBox.style.display = "block";
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Enviar mis respuestas →";
-    isSubmitting = false;
-  }
-
-  /* ==========================================================
-     ENVÍO PRINCIPAL
-     ========================================================== */
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    if (isSubmitting) return;
-
-    if (!form.checkValidity()) {
-      errBox.textContent =
-        "Faltan respuestas obligatorias. Revisa los campos marcados con *.";
-      errBox.style.display = "block";
-
-      const firstInvalid = form.querySelector(":invalid");
-
-      if (firstInvalid) {
-        firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
-        window.setTimeout(() => firstInvalid.focus(), 350);
-      }
-
-      form.reportValidity();
-      return;
+    if (checkbox.checked) {
+      otherInput.focus();
+    } else {
+      otherInput.value = "";
     }
 
-    isSubmitting = true;
-    errBox.style.display = "none";
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Registrando respuestas…";
+    updateProgress();
+  });
+});
 
-    try {
-      await submitToGoogleSheet(buildPayload());
-      showSuccess();
-    } catch (error) {
-      console.error("Error al registrar la encuesta:", error);
-      showError(
-        error && error.message
-          ? error.message
-          : "No se pudo registrar la respuesta. Tus datos permanecen en el formulario."
-      );
-    }
+form.addEventListener("input", updateProgress);
+form.addEventListener("change", updateProgress);
+window.addEventListener("pageshow", refreshProgressAfterRestore);
+window.addEventListener("load", refreshProgressAfterRestore);
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) refreshProgressAfterRestore();
+});
+
+function buildPayload() {
+  return {
+    action: "submit",
+    request_id:
+      "survey_" +
+      Date.now() +
+      "_" +
+      Math.random().toString(36).slice(2, 10),
+    nombre: form.elements.nombre.value.trim(),
+    area: form.elements.area.value,
+    rol: form.elements.rol.value,
+    familiaridad: selectedRadio("familiaridad"),
+    herramientas: collectMulti("herramientas").join(" | "),
+    frecuencia: form.elements.frecuencia.value,
+    pago: selectedRadio("pago"),
+    usos: collectMulti("usos").join(" | "),
+    tarea_concreta: form.elements.tarea_concreta.value.trim(),
+    politicas: form.elements.politicas.value,
+    barreras: collectMulti("barreras").join(" | "),
+    confianza_prompts: selectedRadio("confianza_prompts"),
+    enfasis: form.elements.enfasis.value,
+    objetivo: form.elements.objetivo.value.trim()
+  };
+}
+
+async function sendToGoogleSheet(payload) {
+  const body = new URLSearchParams();
+
+  Object.keys(payload).forEach(function (key) {
+    body.append(key, payload[key] == null ? "" : String(payload[key]));
   });
 
-  updateProgress();
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(function () {
+    controller.abort();
+  }, 25000);
+
+  try {
+    await fetch(SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      cache: "no-store",
+      redirect: "follow",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+      },
+      body: body.toString(),
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function showSuccess() {
+  form.style.display = "none";
+  progressBar.style.display = "none";
+  doneBox.classList.add("show");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function showError(message) {
+  errBox.textContent = message;
+  errBox.style.display = "block";
+  submitBtn.disabled = false;
+  submitBtn.textContent = "Enviar mis respuestas →";
+  isSubmitting = false;
+}
+
+form.addEventListener("submit", async function (event) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (isSubmitting) return;
+
+  if (!form.checkValidity()) {
+    errBox.textContent =
+      "Faltan respuestas obligatorias. Revisa los campos marcados con *.";
+    errBox.style.display = "block";
+
+    const firstInvalid = form.querySelector(":invalid");
+    if (firstInvalid) {
+      firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.setTimeout(function () {
+        firstInvalid.focus();
+      }, 350);
+    }
+
+    form.reportValidity();
+    return;
+  }
+
+  isSubmitting = true;
+  errBox.style.display = "none";
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Registrando respuestas…";
+
+  try {
+    await sendToGoogleSheet(buildPayload());
+    showSuccess();
+  } catch (error) {
+    console.error("Error al enviar la encuesta:", error);
+    showError(
+      "No se pudo enviar la respuesta. Revisa tu conexión y vuelve a intentarlo; tus datos permanecen en el formulario."
+    );
+  }
+});
+
+refreshProgressAfterRestore();
+
 </script>
 </body>
 </html>
